@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CMM Wagon ROH/POH Heat Map — Project Guide</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&family=Rajdhani:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-tag">CMM Project · ROH/POH Wagon Tracking</div>
+  <h1>Wagon <span>Heat Map</span> — Complete Project Guide</h1>
+  <p class="hero-sub">Data analysis, column dictionary &amp; live depot heat map for nominated ROH/POH wagons across Indian Railways</p>
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-val" id="hero-stat-wagons">—</div><div class="stat-lbl">Total Rake Records</div></div>
+    <div class="stat"><div class="stat-val" id="hero-stat-depots">—</div><div class="stat-lbl">Active Depots</div></div>
+    <div class="stat"><div class="stat-val" id="hero-stat-overdue">—</div><div class="stat-lbl">Overdue Rakes</div></div>
+    <div class="stat"><div class="stat-val">18+</div><div class="stat-lbl">Railway Zones</div></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="tabs">
+    <button class="tab" onclick="switchTab('flowchart')">① What This Means</button>
+    <button class="tab" onclick="switchTab('columns')">② Column Dictionary</button>
+    <button class="tab active" onclick="switchTab('heatmap')">③ Live Heat Map</button>
+    <button class="tab" onclick="switchTab('booked')">④ Booked To depot</button>
+  </div>
+
+  <!-- TAB 1: FLOWCHART -->
+  <div class="tab-panel" id="tab-flowchart">
+    <section>
+      <div class="section-title">What is CMM ROH/POH Wagon Tracking?</div>
+      <div class="flow">
+        <div class="flow-row"><div class="flow-node orange"><div class="flow-node-title">🚂 Wagon in Service</div><p>A freight wagon runs kilometres on Indian Railways network. Every wagon has a schedule for Periodic Overhaul (POH) and Return to Home (ROH) based on distance covered, age, and condition.</p></div></div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-row"><div class="flow-node blue"><div class="flow-node-title">📋 Nominated for Maintenance</div><p><strong>CMM</strong> nominates wagons for ROH or POH. The wagon gets a Rake ID and is tracked from its current station through to its destination depot.</p></div></div>
+        <div class="flow-arrow">↓ Splits into two tracks</div>
+        <div class="flow-branch">
+          <div class="flow-node green"><div class="flow-node-title">🔧 ROH — Return Overhaul</div><p>Scheduled every <strong>~18 months</strong>. Lighter maintenance. Wagon goes to its designated <strong>ROH depot</strong>. Overdue Days column flags how late it is.</p></div>
+          <div class="flow-node purple"><div class="flow-node-title">🏭 POH — Periodic Overhaul</div><p>Scheduled every <strong>4.5 years</strong>. Complete overhaul. Wagon goes to POH depot. Distance and Expected Arrival track transit progress.</p></div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-row"><div class="flow-node blue"><div class="flow-node-title">📍 In Transit / At Depot</div><p>Each rake record shows <strong>Current Station → Next Station → Destination</strong>. Distance (km) and Expected Travel Time (hrs) tell you how far out the rake is from its ROH depot.</p></div></div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-branch">
+          <div class="flow-node green"><div class="flow-node-title">✅ Depot Perspective (Heat Map)</div><p>Which depots have the most rakes incoming? The heat map shows each ROH depot as a circle — bigger/redder = more rakes pending at that location.</p></div>
+          <div class="flow-node orange"><div class="flow-node-title">⚠️ Overdue Perspective</div><p>Rakes where <code>Overdue Days &gt; 0</code> are late for maintenance. The higher the number, the more critical. Shown in red on the Booked To depot tab.</p></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- TAB 2: COLUMNS -->
+  <div class="tab-panel" id="tab-columns">
+    <section>
+      <div class="section-title">NKJRH_ROH CSV — Column Dictionary (11 columns)</div>
+      <div class="col-grid">
+        <div class="col-card"><span class="col-badge badge-id">ID</span><div class="col-info"><div class="col-name">ROH Depot</div><div class="col-desc">The depot code where the rake is assigned for ROH maintenance (e.g. NKJRH, UDLRH, TKDRH).</div><div class="col-use">★ KEY — used to group rakes per depot and plot heat map circles.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-id">ID</span><div class="col-info"><div class="col-name">Rake ID</div><div class="col-desc">Unique identifier for the rake/consist being sent for maintenance.</div><div class="col-use">Primary key for each record; shown in popup on map.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-ops">OPS</span><div class="col-info"><div class="col-name">Number of Wagons</div><div class="col-desc">How many individual wagons are in this rake.</div><div class="col-use">Workload metric — a rake of 30 wagons is heavier than one of 3.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-status">STATUS</span><div class="col-info"><div class="col-name">Overdue Days</div><div class="col-desc">How many days past the scheduled ROH date this rake is. 0 = on time, positive = overdue.</div><div class="col-use">★ Critical — drives the overdue KPI and red highlighting on the map.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-geo">GEO</span><div class="col-info"><div class="col-name">Current Station</div><div class="col-desc">Station code where the rake is right now.</div><div class="col-use">Live location tracking; map origin point for wagon dots.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-geo">GEO</span><div class="col-info"><div class="col-name">Next Station</div><div class="col-desc">The next station the rake is routed through en route to destination.</div><div class="col-use">Routing visibility; intermediate waypoint.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-geo">GEO</span><div class="col-info"><div class="col-name">Destination</div><div class="col-desc">Final destination depot code (FD suffix format, e.g. ADTPFD).</div><div class="col-use">Confirms which depot the rake is booked to; shown in wagon popup.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-date">DATE</span><div class="col-info"><div class="col-name">Last Updated</div><div class="col-desc">Timestamp of when this record was last refreshed in the system.</div><div class="col-use">Data freshness check; filter for stale records.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-ops">OPS</span><div class="col-info"><div class="col-name">Distance (km)</div><div class="col-desc">Kilometres remaining from current station to destination depot.</div><div class="col-use">Transit progress; 0 = rake already at depot.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-ops">OPS</span><div class="col-info"><div class="col-name">Expected Travel Time (hrs)</div><div class="col-desc">Estimated hours to reach destination from current station.</div><div class="col-use">Arrival planning; depot capacity scheduling.</div></div></div>
+        <div class="col-card"><span class="col-badge badge-date">DATE</span><div class="col-info"><div class="col-name">Expected Arrival</div><div class="col-desc">Calculated datetime when rake is expected to arrive at the depot.</div><div class="col-use">★ Depot scheduling — sort by this to see what's arriving soonest.</div></div></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- TAB 3: HEATMAP -->
+  <div class="tab-panel active" id="tab-heatmap">
+    <section>
+      <div class="section-title">Live Depot Heat Map — Rakes Pending by Location</div>
+      <div class="map-wrapper">
+        <div id="map"></div>
+        <div class="map-overlay map-search-panel">
+          <div class="map-card map-card--small">
+            <div class="map-card-title">Search Depot / Station</div>
+            <input id="map-search-input" class="search map-search" placeholder="Search Depot / Station" autocomplete="off">
+            <div id="map-search-results" class="suggestion-list"></div>
+            <div class="map-card-title" style="margin-top:12px;">Zone Filter</div>
+            <select id="zone-filter" class="search map-select">
+              <option value="ALL">All Zones</option>
+              <option value="NR">NR</option>
+              <option value="NCR">NCR</option>
+              <option value="ER">ER</option>
+              <option value="SER">SER</option>
+              <option value="SCR">SCR</option>
+              <option value="SECR">SECR</option>
+              <option value="CR">CR</option>
+              <option value="WR">WR</option>
+              <option value="NFR">NFR</option>
+            </select>
+          </div>
+        </div>
+        <div class="map-overlay map-quick-access">
+          <div class="map-card map-card--small">
+            <div class="map-card-title">Quick Access</div>
+            <div class="quick-list" id="quick-access-list">
+              <button class="quick-link" data-code="NKJRH">NKJRH</button>
+              <button class="quick-link" data-code="BHILAI">BHILAI</button>
+              <button class="quick-link" data-code="AJNI">AJNI</button>
+              <button class="quick-link" data-code="KOTA">KOTA</button>
+              <button class="quick-link" data-code="MUGA">MUGA</button>
+            </div>
+          </div>
+        </div>
+        <div class="map-overlay map-ranking-panel">
+          <div class="map-card">
+            <div class="map-card-title">Top 10 Depots</div>
+            <div class="ranking-list" id="top-depot-ranking"></div>
+          </div>
+        </div>
+        <div class="map-overlay map-floating-legend">
+          <div class="map-card map-card--small">
+            <div class="map-card-title">Legend</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span> Low Load</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#facc15"></span> Medium Load</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span> High Load</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span> Critical Load</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#00E5FF"></span> Wagon Marker</div>
+          </div>
+        </div>
+      </div>
+      <div class="map-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Critical (28+ rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> Elevated (14–27 rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#facc15"></div> Medium (5–13 rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Low (1–4 rakes)</div>
+        <div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--muted);" id="heatmap-stat-lbl">Loading… · Click circle for details</div>
+      </div>
+    </section>
+    <section>
+      <div class="section-title">Depot Table — All Mapped Locations From Data</div>
+      <div class="table-wrap">
+        <table id="depot-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Depot Code</th>
+              <th>Station Name</th>
+              <th>Rake Count</th>
+              <th>Overdue Rakes</th>
+              <th>Heat Volume Bar</th>
+              <th>Lat</th>
+              <th>Lon</th>
+            </tr>
+          </thead>
+          <tbody id="depot-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- TAB 4: BOOKED TO depot -->
+  <div class="tab-panel" id="tab-booked">
+    <section>
+      <div class="section-title">Booked To depot — Rakes Allocated to ROH depots</div>
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <div style="width:340px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;">
+          <div style="font-weight:700;margin-bottom:8px">depots (Multi-select)</div>
+          <input id="booked-depot-search" class="search" placeholder="Search depots...">
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button id="booked-select-all" class="btn">Select All</button>
+            <button id="booked-clear-all" class="btn secondary">Clear</button>
+          </div>
+          <div id="booked-depots" class="multi" style="margin-top:8px"></div>
+        </div>
+
+        <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <label for="booked-speed-input" style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;">
+                Speed (km/hr)
+                <input id="booked-speed-input" class="search" type="number" min="0.1" step="0.1" value="20" style="width:100px;" />
+              </label>
+              <button id="booked-recalc" class="btn secondary">Recalculate</button>
+            </div>
+            <button id="booked-refresh" class="btn">Refresh</button>
+          </div>
+          <div id="map-booked" style="height:420px;margin-top:12px;border-radius:8px;border:1px solid var(--border)"></div>
+
+          <div class="kpi-row">
+            <div class="kpi"><div class="small">Total Booked Rakes</div><div id="booked-kpi-total" style="font-size:20px;font-weight:700">—</div></div>
+            <div class="kpi"><div class="small">Total Wagons</div><div id="booked-kpi-wagons" style="font-size:20px;font-weight:700">—</div></div>
+            <div class="kpi"><div class="small">depots Selected</div><div id="booked-kpi-depots" style="font-size:20px;font-weight:700">—</div></div>
+            <div class="kpi"><div class="small">Overdue Rakes</div><div id="booked-kpi-overdue" style="font-size:20px;font-weight:700;color:#ff8b8b">—</div></div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div style="font-weight:700;margin-bottom:6px">depot-wise Counts</div>
+            <div style="max-height:180px;overflow:auto;border-radius:6px;border:1px solid rgba(255,255,255,0.02);padding:8px;background:#071020">
+              <table id="booked-depot-counts">
+                <thead><tr><th>depot</th><th>Rakes</th><th>Wagons</th><th>Overdue</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div style="font-weight:700;margin-bottom:6px">Rake Details</div>
+            <div style="max-height:260px;overflow:auto;border-radius:6px;border:1px solid rgba(255,255,255,0.02);background:#071020;padding:8px">
+              <table id="booked-wagon-table">
+                <thead>
+                  <tr>
+                    <th>Rake ID</th>
+                    <th>Wagons</th>
+                    <th>Current Stn</th>
+                    <th>Dest</th>
+                    <th>ROH Depot</th>
+                    <th>Overdue Days</th>
+                    <th>Dist (km)</th>
+                    <th>ETA (hrs)</th>
+                    <th>Exp Arrival</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<!-- map view upgraded for satellite basemap, zone labels, and stronger track rendering -->
+<script src="script.js"></script>
+
+</body>
+</html>

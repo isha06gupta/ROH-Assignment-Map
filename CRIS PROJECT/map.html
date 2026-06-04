@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CMM Wagon ROH/POH Heat Map — Project Guide</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&family=Rajdhani:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+
+<div class="main">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('heatmap')">Live Heat Map</button>
+    <button class="tab" onclick="switchTab('booked')">Booked To depot</button>
+  </div>
+
+  <!-- TAB 3: HEATMAP -->
+  <div class="tab-panel active" id="tab-heatmap">
+    <section>
+      <div class="section-title">Live Depot Heat Map</div>
+      <div id="map"></div>
+      <div class="map-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Critical (28+ rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> Elevated (14–27 rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#facc15"></div> Medium (5–13 rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Low (1–4 rakes)</div>
+        <div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--muted);" id="heatmap-stat-lbl">Loading… · Click circle for details</div>
+      </div>
+    </section>
+    <section>
+      <div class="section-title">Depot Table — All Mapped Locations From Data</div>
+      <div class="table-wrap">
+        <table id="depot-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Depot Code</th>
+              <th>Station Name</th>
+              <th>Rake Count</th>
+              <th>Overdue Rakes</th>
+              <th>Heat Volume Bar</th>
+              <th>Lat</th>
+              <th>Lon</th>
+            </tr>
+          </thead>
+          <tbody id="depot-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- TAB 4: BOOKED TO depot -->
+  <div class="tab-panel" id="tab-booked">
+    <section>
+      <div class="section-title">Booked To depot — Rakes Allocated to ROH depots</div>
+      <div style="display:flex;gap:20px;align-items:flex-start;">
+        <div style="width:400px;min-width:400px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;">
+          <div style="font-weight:700;margin-bottom:8px">ROH-Depots (Multi-select)</div>
+          <input id="booked-depot-search" class="search" placeholder="Search depots...">
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button id="booked-select-all" class="btn">Select All</button>
+            <button id="booked-clear-all" class="btn secondary">Clear</button>
+          </div>
+          <div id="booked-depots" class="multi" style="margin-top:8px"></div>
+
+<!-- Distance Filter -->
+<div class="filter-card">
+    <div class="filter-title">Distance</div>
+
+    <select id="distance-filter" class="filter-select">
+        <option value="100">100 KM</option>
+        <option value="200">200 KM</option>
+        <option value="500" selected>500 KM</option>
+    </select>
+</div>
+
+<!-- Days Filter -->
+<div class="filter-card">
+    <div class="filter-title">Days</div>
+
+    <select id="days-filter" class="filter-select">
+        <option value="5">5 Days</option>
+        <option value="10">10 Days</option>
+        <option value="20" selected>20 Days</option>
+    </select>
+</div>
+</div>
+
+        <div style="flex:1 1 0;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <label for="booked-speed-input" style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;">
+                Speed (km/hr)
+                <input id="booked-speed-input" class="search" type="number" min="0.1" step="0.1" value="20" style="width:100px;" />
+              </label>
+              <button id="booked-recalc" class="btn secondary">Recalculate</button>
+            </div>
+            <button id="booked-refresh" class="btn">Refresh</button>
+          </div>
+      <div id="map-booked"
+     style="height:650px;margin-top:12px;border-radius:8px;border:1px solid var(--border)">
+</div>
+          <div class="kpi-row">
+            <div class="kpi"><div class="small">Total Booked Rakes</div><div id="booked-kpi-total" style="font-size:20px;font-weight:700">—</div></div>
+            <div class="kpi"><div class="small">Total Wagons</div><div id="booked-kpi-wagons" style="font-size:20px;font-weight:700">—</div></div>
+            <div class="kpi"><div class="small">depots Selected</div><div id="booked-kpi-depots" style="font-size:20px;font-weight:700">—</div></div>
+            <div class="kpi"><div class="small">Overdue Rakes</div><div id="booked-kpi-overdue" style="font-size:20px;font-weight:700;color:#ff8b8b">—</div></div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div style="font-weight:700;margin-bottom:6px">Depot-wise Counts</div>
+            <div style="max-height:180px;overflow:auto;border-radius:6px;border:1px solid rgba(255,255,255,0.02);padding:8px;background:#071020">
+              <table id="booked-depot-counts">
+                <thead><tr><th>depot</th><th>Rakes</th><th>Wagons</th><th>Overdue</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div style="font-weight:700;margin-bottom:6px">Rake Details</div>
+            <div style="max-height:260px;overflow:auto;border-radius:6px;border:1px solid rgba(255,255,255,0.02);background:#071020;padding:8px">
+              <table id="booked-wagon-table">
+                <thead>
+                  <tr>
+                    <th>Rake ID</th>
+                    <th>Wagons</th>
+                    <th>Current Stn</th>
+                    <th>Dest</th>
+                    <th>ROH Depot</th>
+                    <th>Overdue Days</th>
+                    <th>Dist (km)</th>
+                    <th>ETA (hrs)</th>
+                    <th>Exp Arrival</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<!-- map view upgraded for satellite basemap, zone labels, and stronger track rendering -->
+<script src="script.js"></script>
+
+</body>
+</html>
