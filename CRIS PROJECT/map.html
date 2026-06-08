@@ -11,51 +11,11 @@
 <body>
 
 <div class="main">
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('heatmap')">Live Heat Map</button>
-    <button class="tab" onclick="switchTab('booked')">Booked To depot</button>
-  </div>
-
-  <!-- TAB 3: HEATMAP -->
-  <div class="tab-panel active" id="tab-heatmap">
-    <section>
-      <div class="section-title">Live Depot Heat Map</div>
-      <div id="map"></div>
-      <div class="map-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Critical (28+ rakes)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> Elevated (14–27 rakes)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#facc15"></div> Medium (5–13 rakes)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Low (1–4 rakes)</div>
-        <div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--muted);" id="heatmap-stat-lbl">Loading… · Click circle for details</div>
-      </div>
-    </section>
-    <section>
-      <div class="section-title">Depot Table — All Mapped Locations From Data</div>
-      <div class="table-wrap">
-        <table id="depot-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Depot Code</th>
-              <th>Station Name</th>
-              <th>Rake Count</th>
-              <th>Overdue Rakes</th>
-              <th>Heat Volume Bar</th>
-              <th>Lat</th>
-              <th>Lon</th>
-            </tr>
-          </thead>
-          <tbody id="depot-tbody"></tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-
   <!-- TAB 4: BOOKED TO depot -->
-  <div class="tab-panel" id="tab-booked">
+  <div id="tab-booked">
     <section>
-      <div class="section-title">Booked To depot — Rakes Allocated to ROH depots</div>
-      <div style="display:flex;gap:20px;align-items:flex-start;">
+      <div class="section-title"> ROH Depot Dashboard</div>
+    <div style="display:flex;gap:20px;align-items:flex-start;">
         <div style="width:400px;min-width:400px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;">
           <div style="font-weight:700;margin-bottom:8px">ROH-Depots (Multi-select)</div>
           <input id="booked-depot-search" class="search" placeholder="Search depots...">
@@ -70,9 +30,10 @@
     <div class="filter-title">Distance</div>
 
     <select id="distance-filter" class="filter-select">
+        <option value="50">50 KM</option>
         <option value="100">100 KM</option>
         <option value="200">200 KM</option>
-        <option value="500" selected>500 KM</option>
+        <option value="250">250 KM</option>
     </select>
 </div>
 
@@ -81,9 +42,9 @@
     <div class="filter-title">Days</div>
 
     <select id="days-filter" class="filter-select">
-        <option value="5">5 Days</option>
-        <option value="10">10 Days</option>
-        <option value="20" selected>20 Days</option>
+        <option value="0.1">0.1 Days</option>
+        <option value="0.2">0.2 Days</option>
+        <option value="0.3"> 0.3 Days</option>
     </select>
 </div>
 </div>
@@ -99,10 +60,13 @@
             </div>
             <button id="booked-refresh" class="btn">Refresh</button>
           </div>
-      <div id="map-booked"
-     style="height:650px;margin-top:12px;border-radius:8px;border:1px solid var(--border)">
-</div>
-          <div class="kpi-row">
+      <div id="map-booked" style="height:650px;margin-top:12px;border-radius:8px;border:1px solid var(--border)"></div>
+      <div class="map-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Critical (28+ rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> Elevated (14–27 rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#facc15"></div> Medium (5–13 rakes)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Low (1–4 rakes)</div>     </div>    
+      <div class="kpi-row">
             <div class="kpi"><div class="small">Total Booked Rakes</div><div id="booked-kpi-total" style="font-size:20px;font-weight:700">—</div></div>
             <div class="kpi"><div class="small">Total Wagons</div><div id="booked-kpi-wagons" style="font-size:20px;font-weight:700">—</div></div>
             <div class="kpi"><div class="small">depots Selected</div><div id="booked-kpi-depots" style="font-size:20px;font-weight:700">—</div></div>

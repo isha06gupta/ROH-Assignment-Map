@@ -1,4 +1,5 @@
 var globalOrgsData = [];
+var depotCoordLookup = {};
 var globalWagonsData = [];
 var globalOrgLookup = {};
 
@@ -18,18 +19,26 @@ let bookedSpeedKmph = 20;
 
 // Updated to handle stn_code style keys (no gis suffix stripping needed, but kept for safety)
 function shared_getOrgByCode(code) {
-  if (!code) return null;
-  code = String(code).trim().toUpperCase();
-  // Direct match
-  if (globalOrgLookup[code]) return globalOrgLookup[code];
-  // Strip common depot suffixes and retry
-  const codeBase = code.replace(/(REPFD|FD|RH|PH|REP|ROH)$/i, '');
-  if (globalOrgLookup[codeBase]) return globalOrgLookup[codeBase];
-  // Partial match fallback
-  for (let k in globalOrgLookup) {
-    if (k === codeBase || k.startsWith(codeBase) || codeBase.startsWith(k)) return globalOrgLookup[k];
-  }
-  return null;
+
+    if (!code) return null;
+
+    code = String(code).trim().toUpperCase();
+
+    if (globalOrgLookup[code]) {
+        return globalOrgLookup[code];
+    }
+
+    for (const key in globalOrgLookup) {
+
+        if (
+            code.includes(key) ||
+            key.includes(code.replace(/RH$/,''))
+        ) {
+            return globalOrgLookup[key];
+        }
+    }
+
+    return null;
 }
 
 function parseDateTime(value) {
@@ -59,236 +68,33 @@ function getBookedSpeed() {
   input.reportValidity();
   return null;
 }
+function getDistanceFilter() {
 
-function switchTab(id) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  const panel = document.getElementById('tab-' + id);
-  if (panel) panel.classList.add('active');
-  document.querySelectorAll('.tab').forEach(t => {
-    const attr = t.getAttribute('onclick') || '';
-    if (attr.includes("'" + id + "'") || attr.includes('"' + id + '"')) t.classList.add('active');
-  });
-  if (id === 'heatmap' && window.mapLive) setTimeout(() => window.mapLive.invalidateSize(), 150);
-  if (id === 'booked' && window.initBookedMapSafe) window.initBookedMapSafe();
+    const el = document.getElementById('distance-filter');
+
+    if (!el) return 500;
+
+    return parseFloat(el.value) || 500;
 }
 
+function getDaysFilter() {
 
-// ─── LIVE HEATMAP ────────────────────────────────────────────────────────────
-(function () {
-  const map = L.map('map', { center: [22.5, 80.0], zoom: 5 });
-  window.mapLive = map;
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '&copy; Esri, Maxar, Earthstar Geographics, and the GIS community',
-    maxZoom: 19
-  }).addTo(map);
+    const el = document.getElementById('days-filter');
 
-  const zoneLayer      = L.layerGroup().addTo(map);
-  const trackLayer     = L.layerGroup().addTo(map);
-  const depotLayer     = L.layerGroup().addTo(map);
-  const depotLabelLayer= L.layerGroup().addTo(map);
-  const wagonMarkerLayer = L.layerGroup().addTo(map);
-  const zoneLabelLayer = L.layerGroup().addTo(map);
-  const depotMarkers = [];
-  const depotLabelMarkers = [];
+    if (!el) return 20;
 
-  function updateDepotMarkerSizes() {
-    const zoom = map.getZoom();
-    depotMarkers.forEach(marker => {
-      if (marker && typeof marker.count === 'number' && marker.setRadius) {
-        marker.setRadius(getRadius(marker.count, zoom));
-      }
-    });
-    updateDepotLabelVisibility();
-  }
-
-  function updateDepotLabelVisibility() {
-    const zoom = map.getZoom();
-    depotLabelMarkers.forEach(label => {
-      if (!label._icon) return;
-      const count = label.count || 0;
-      let visible = false;
-      if (zoom >= 8) visible = true;
-      else if (zoom >= 6) visible = count >= 5;
-      else visible = count >= 14;
-      label._icon.style.display = visible ? '' : 'none';
-    });
-  }
-
-  map.on('zoomend', updateDepotMarkerSizes);
-
-  L.control.layers(null, {
-    'Depot Circles':  depotLayer,
-    'Depot Labels':   depotLabelLayer,
-    'Railway Zones':  zoneLayer,
-    'Track Lines':    trackLayer
-  }, { collapsed: false }).addTo(map);
-
-  function getZoneFillColor(code) {
-    const mapColors = {
-      NR: '#60A5FA', NWR: '#A78BFA', WR: '#F59E0B', CR: '#F472B6',
-      SCR: '#22C55E', SER: '#06B6D4', ER: '#FACC15', NFR: '#14B8A6',
-      ECR: '#F97316', SECR: '#0EA5E9', SR: '#8B5CF6', WCR: '#38BDF8'
-    };
-    if (!code) return '#94a3b8';
-    const key = String(code).trim().toUpperCase();
-    if (mapColors[key]) return mapColors[key];
-    const palette = ['#60A5FA','#A78BFA','#F59E0B','#F472B6','#22C55E','#06B6D4','#FACC15','#14B8A6','#F97316','#0EA5E9','#8B5CF6','#38BDF8'];
-    const hash = Array.from(key).reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-    return palette[hash % palette.length];
-  }
-
-  function getZoneCode(feature) {
-    if (!feature || !feature.properties) return '';
-    return String(feature.properties.Code || feature.properties.zone || feature.properties.Name || feature.properties.name || '').trim().toUpperCase();
-  }
-
-  fetch('railway_track_cris.json').then(r => r.json()).then(data => {
-    L.geoJSON(data, {
-      style: () => ({ color: '#ffd166', weight: 1.5, opacity: 0.65, lineCap: 'round', lineJoin: 'round' }),
-      onEachFeature: (feature, layer) => {
-        if (feature.properties && feature.properties.tmssection)
-          layer.bindPopup("<b>Section:</b> " + feature.properties.tmssection +
-            "<br><b>Railway:</b> " + feature.properties.railway +
-            "<br><b>Division:</b> " + feature.properties.division);
-      }
-    }).addTo(trackLayer);
-  }).catch(() => {});
-
-  fetch('railway_zone.json').then(r => r.json()).then(data => {
-    L.geoJSON(data, {
-      style: feature => ({
-        color: '#ffffff', weight: 2.2, opacity: 0.95,
-        fillColor: getZoneFillColor(getZoneCode(feature)),
-        fillOpacity: 0.26, dashArray: '3,5'
-      }),
-      onEachFeature: (feature, layer) => {
-        const code = getZoneCode(feature);
-        layer.bindPopup("<b>Zone:</b> " + (feature.properties.Name || code) + " (" + code + ")");
-        if (code) {
-          const center = layer.getBounds().getCenter();
-          L.marker(center, {
-            icon: L.divIcon({ className: 'zone-label', html: code, iconSize: [0,0], iconAnchor: [0,0] }),
-            interactive: false
-          }).addTo(zoneLabelLayer);
-        }
-      }
-    }).addTo(zoneLayer);
-  }).catch(() => {});
-
-  function getColor(count) {
-    if (count >= 28) return '#ef4444';
-    if (count >= 14) return '#f97316';
-    if (count >= 5)  return '#facc15';
-    return '#22c55e';
-  }
-
-  function getRadius(count, zoom = 5) {
-    const base = 4 + Math.sqrt(count) * 0.7;
-    const scale = 1 + (zoom - 5) * 0.06;
-    return Math.max(4, Math.min(10, Math.round(base * scale * 10) / 10));
-  }
-
-  window.initLiveHeatmapModule = function () {
-    depotLayer.clearLayers();
-    depotLabelLayer.clearLayers();
-    depotMarkers.length = 0;
-    depotLabelMarkers.length = 0;
-
-    const counts = {};
-    const overdueCounts = {};
-    const totalWagonsPerDepot = {};
-    globalWagonsData.forEach(w => {
-      const key = (w['ROH Depot'] || '').trim().toUpperCase();
-      if (!key) return;
-      counts[key] = (counts[key] || 0) + 1;
-      totalWagonsPerDepot[key] = (totalWagonsPerDepot[key] || 0) + (parseInt(w['Number of Wagons']) || 0);
-      if (parseFloat(w['Overdue Days']) > 0) overdueCounts[key] = (overdueCounts[key] || 0) + 1;
-    });
-
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    const tbody = document.getElementById('depot-tbody');
-    if (tbody) tbody.innerHTML = '';
-    const maxVal = sorted.length > 0 ? sorted[0][1] : 1;
-
-    sorted.forEach(([depotCode, c], index) => {
-      const org    = shared_getOrgByCode(depotCode);
-      // CHANGED: pass org object directly (not org.gis_coord)
-      const coords = org ? shared_parseCoord(org) : null;
-      const latStr = coords ? coords.lat.toFixed(3) : '--';
-      const lonStr = coords ? coords.lon.toFixed(3) : '--';
-      // CHANGED: use stn_name instead of station_name
-      const nameStr = org ? (org.stn_name || depotCode) : depotCode;
-      const overdue = overdueCounts[depotCode] || 0;
-      const pct = ((c / maxVal) * 100).toFixed(0);
-      const cls = c >= 28 ? 'count-high' : c >= 5 ? 'count-med' : 'count-low';
-
-      if (tbody) {
-        tbody.innerHTML += `<tr>
-          <td style="color:var(--muted)">${index + 1}</td>
-          <td style="font-family:'IBM Plex Mono',monospace;font-size:18px;">${depotCode}</td>
-          <td>${nameStr}</td>
-          <td class="${cls}">${c}</td>
-          <td style="color:${overdue > 0 ? '#ef4444' : 'var(--green)'};font-family:'IBM Plex Mono',monospace;font-weight:600">${overdue}</td>
-          <td class="bar-cell"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div></td>
-          <td style="color:var(--muted);font-size:18px;">${latStr}</td>
-          <td style="color:var(--muted);font-size:18px;">${lonStr}</td>
-        </tr>`;
-      }
-
-      if (coords) {
-        const wagonTotal = totalWagonsPerDepot[depotCode] || 0;
-        const marker = L.circleMarker([coords.lat, coords.lon], {
-          radius: getRadius(c, map.getZoom()),
-          fillColor: getColor(c),
-          color: '#fff', weight: 1, fillOpacity: 0.8
-        }).addTo(depotLayer).bindPopup(`
-          <div style="font-family:'Segoe UI',sans-serif;font-size:19px;min-width:190px;line-height:1.6;color:#111;">
-            <div style="font-family:monospace;font-size:19px;font-weight:700;border-bottom:2px solid ${getColor(c)};padding-bottom:2px;margin-bottom:6px;">${depotCode}</div>
-            <strong>ROH Depot:</strong> ${depotCode}<br/>
-            <strong>Booked Rakes:</strong> ${c}<br/>
-            <strong>Total Wagons:</strong> ${wagonTotal}<br/>
-            <strong>Overdue Rakes:</strong> <span style="color:${overdue > 0 ? '#ef4444' : '#22c55e'};font-weight:700">${overdue}</span>
-          </div>
-        `);
-        marker.count = c;
-        marker.originalRadius = marker.options.radius;
-        marker.on({
-          mouseover: () => { marker.setStyle({ weight: 2, fillOpacity: 1 }); marker.setRadius(Math.min(12, marker.options.radius + 2)); },
-          mouseout:  () => { marker.setStyle({ weight: 1, fillOpacity: 0.8 }); marker.setRadius(getRadius(c, map.getZoom())); }
-        });
-        depotMarkers.push(marker);
-
-        const label = L.marker([coords.lat, coords.lon], {
-          icon: L.divIcon({ className: 'depot-label', html: depotCode, iconSize: [0,0], iconAnchor: [0,-12] }),
-          interactive: false
-        }).addTo(depotLabelLayer);
-        label.count = c;
-        depotLabelMarkers.push(label);
-      }
-    });
-
-    const totalRakes   = globalWagonsData.length;
-    const totalOverdue = globalWagonsData.filter(w => parseFloat(w['Overdue Days']) > 0).length;
-
-    const wagonsEl  = document.getElementById('hero-stat-wagons');
-    const depotsEl  = document.getElementById('hero-stat-depots');
-    const overdueEl = document.getElementById('hero-stat-overdue');
-    const statLblEl = document.getElementById('heatmap-stat-lbl');
-
-    if (wagonsEl)  wagonsEl.textContent  = totalRakes;
-    if (depotsEl)  depotsEl.textContent  = sorted.length;
-    if (overdueEl) overdueEl.textContent = totalOverdue;
-    if (statLblEl) statLblEl.textContent = `${totalRakes} total rakes · ${sorted.length} active depots · ${totalOverdue} overdue`;
-
-    updateDepotLabelVisibility();
-  };
-})();
-
+    return parseFloat(el.value) || 20;
+}
 
 // ─── BOOKED TO DEPOT ─────────────────────────────────────────────────────────
 (function () {
-  let mapB = null, depotLayerB = null, wagonLayerB = null;
+  let mapB = null;
+  let depotLayerB = null;
+  let wagonLayerB = null;
+
+  let zoneLayerB = null;
+  let trackLayerB = null;
+  let depotLabelLayerB = null;
 
   function initBookedMap() {
     const container = document.getElementById('map-booked');
@@ -301,18 +107,104 @@ function switchTab(id) {
         maxZoom: 19
       }).addTo(mapB);
       depotLayerB = L.layerGroup().addTo(mapB);
-      wagonLayerB = L.layerGroup().addTo(mapB);
+wagonLayerB = L.layerGroup().addTo(mapB);
+
+zoneLayerB = L.layerGroup().addTo(mapB);
+trackLayerB = L.layerGroup().addTo(mapB);
+depotLabelLayerB = L.layerGroup().addTo(mapB);
+fetch('railway_track_cris.json')
+.then(r => r.json())
+.then(data => {
+    L.geoJSON(data,{
+        style:{
+            color:'#ffd166',
+            weight:1.5,
+            opacity:0.65
+        }
+    }).addTo(trackLayerB);
+})
+.catch(()=>{});
+
+function getZoneColor(code){
+
+    const colors = {
+        NR:'#60A5FA',
+        WR:'#F59E0B',
+        CR:'#EC4899',
+        ER:'#22C55E',
+        ECR:'#F97316',
+        NFR:'#06B6D4',
+        NWR:'#A855F7',
+        SCR:'#10B981',
+        SECR:'#EAB308',
+        SER:'#3B82F6',
+        SR:'#8B5CF6',
+        WCR:'#14B8A6'
+    };
+
+    return colors[code] || '#94A3B8';
+}
+fetch('railway_zone.json')
+.then(r => r.json())
+.then(data => {
+    L.geoJSON(data, {
+style: function(feature){
+
+    const zoneCode =
+        feature.properties.Code ||
+        feature.properties.code ||
+        feature.properties.NAME ||
+        feature.properties.Name ||
+        '';
+
+    return {
+        color:'#ffffff',
+        weight:2,
+        opacity:0.9,
+        fillColor:getZoneColor(zoneCode),
+        fillOpacity:0.08
+    };
+},
+    onEachFeature:(feature, layer)=>{
+
+        const code =
+            feature.properties.Code ||
+            feature.properties.code ||
+            feature.properties.NAME ||
+            feature.properties.Name ||
+            '';
+
+        if(code){
+
+            const center = layer.getBounds().getCenter();
+
+            L.marker(center,{
+                icon:L.divIcon({
+                    className:'zone-label',
+                    html:code,
+                    iconSize:[0,0]
+                }),
+                interactive:false
+            }).addTo(zoneLayerB);
+
+        }
+    }
+
+}).addTo(zoneLayerB);
+})
+.catch(()=>{});
+L.control.layers(null, {
+  'Depot Circles': depotLayerB,
+  'Depot Labels': depotLabelLayerB,
+  'Railway Zones': zoneLayerB,
+  'Track Lines': trackLayerB
+}, { collapsed:false }).addTo(mapB);
+
     } catch (e) { console.warn('Failed to init booked map:', e); }
   }
-
-  window.initBookedMapSafe = function () {
-    initBookedMap();
-    if (mapB) setTimeout(() => mapB.invalidateSize(true), 50);
-    booked_update();
-  };
-
-  function booked_builddepotsList() {
-    const set = new Set();
+  
+function booked_builddepotsList() {
+  const set = new Set();
     globalWagonsData.forEach(r => {
       const v = (r['ROH Depot'] || '').trim().toUpperCase();
       if (v) set.add(v);
@@ -330,32 +222,72 @@ function switchTab(id) {
     });
   }
 
-  function booked_update() {
+function booked_update() {
     if (!globalWagonsData || !globalOrgsData) return;
     initBookedMap();
 
     const selected = Array.from(
-      document.querySelectorAll('#booked-depots input[type=checkbox]:checked')
-    ).map(cb => cb.dataset.code.toUpperCase());
+  document.querySelectorAll('#booked-depots input[type=checkbox]:checked')
+).map(cb => cb.dataset.code.toUpperCase());
 
-    document.getElementById('booked-kpi-depots').textContent = selected.length;
+document.getElementById('booked-kpi-depots').textContent = selected.length;
 
-    const rows = selected.length === 0 ? [] : globalWagonsData.filter(r => {
-      const val = (r['ROH Depot'] || '').trim().toUpperCase();
-      return selected.includes(val);
-    });
+let rows = selected.length === 0 ? [] : globalWagonsData.filter(r => {
 
-    document.getElementById('booked-kpi-total').textContent = rows.length;
+    const depot =
+        (r['ROH Depot'] || '').trim().toUpperCase();
 
-    const totalWagons = rows.reduce((s, r) => s + (parseInt(r['Number of Wagons']) || 0), 0);
-    document.getElementById('booked-kpi-wagons').textContent = totalWagons;
+    return selected.includes(depot);
 
-    const overdueCount = rows.filter(r => parseFloat(r['Overdue Days']) > 0).length;
-    document.getElementById('booked-kpi-overdue').textContent = overdueCount;
+});
 
-    const speed = getBookedSpeed();
-    if (speed === null) return;
+const speed = getBookedSpeed();
+if (speed === null) return;
 
+const selectedDistance = getDistanceFilter();
+const selectedDays = getDaysFilter();
+
+/*
+  Reachable distance based on:
+  Speed × 24 hrs × Days
+*/
+rows = rows.filter(r => {
+
+    const wagonDistance =
+        parseFloat(r['Distance (km)']) || 0;
+
+    const recalculatedEtaDays =
+        (wagonDistance / speed) / 24;
+
+    return (
+        wagonDistance <= selectedDistance &&
+        recalculatedEtaDays <= selectedDays
+    );
+});
+
+document.getElementById('booked-kpi-total').textContent = rows.length;
+
+const totalWagons = rows.reduce(
+    (s, r) => s + (parseInt(r['Number of Wagons']) || 0),
+    0
+);
+
+document.getElementById('booked-kpi-wagons').textContent = totalWagons;
+
+const overdueCount = rows.filter(
+    r => parseFloat(r['Overdue Days']) > 0
+).length;
+
+document.getElementById('booked-kpi-overdue').textContent = overdueCount;
+
+console.log({
+    speed,
+    selectedDistance,
+    selectedDays,
+    filteredRows: rows.length,
+    sampleRow: rows[0]
+
+});
     // Depot-wise counts
     const counts = {};
     rows.forEach(r => {
@@ -404,27 +336,57 @@ function switchTab(id) {
     }
 
     if (!mapB) return;
-    if (depotLayerB) depotLayerB.clearLayers();
-    if (wagonLayerB) wagonLayerB.clearLayers();
+  if (depotLayerB) depotLayerB.clearLayers();
+if (wagonLayerB) wagonLayerB.clearLayers();
+if (depotLabelLayerB) depotLabelLayerB.clearLayers();
 
     const bounds = [];
 
-    // Depot circles
+    //Depot Circle
     Object.entries(counts).forEach(([depot, d]) => {
-      const org = shared_getOrgByCode(depot);
-      if (!org) return;
-      // CHANGED: pass org object directly
-      const coords = shared_parseCoord(org);
-      if (!coords) return;
-      bounds.push([coords.lat, coords.lon]);
-      const radius = 6 + Math.sqrt(d.rakes) * 6;
-      const color  = d.rakes >= 28 ? '#ef4444' : d.rakes >= 14 ? '#f97316' : d.rakes >= 5 ? '#facc15' : '#22c55e';
-      L.circleMarker([coords.lat, coords.lon], {
-        radius, fillColor: color, color: '#fff', weight: 1.2, fillOpacity: 0.4
-      }).addTo(depotLayerB).bindPopup(
-        `<strong>${depot}</strong><br/>Rakes: ${d.rakes}<br/>Wagons: ${d.wagons}<br/>Overdue: <span style="color:${d.overdue > 0 ? '#ef4444' : '#22c55e'}">${d.overdue}</span>`
-      );
-    });
+
+    if (!selected.includes(depot)) return;
+const org = depotCoordLookup[depot];
+
+if (!org) return;
+
+    const coords = shared_parseCoord(org);
+    if (!coords) return;
+
+    bounds.push([coords.lat, coords.lon]);
+
+    const color =
+        d.rakes >= 28 ? '#ef4444' :
+        d.rakes >= 14 ? '#f97316' :
+        d.rakes >= 5  ? '#facc15' :
+                         '#22c55e';
+
+    const radius =
+        d.rakes >= 28 ? 18 :
+        d.rakes >= 14 ? 15 :
+        d.rakes >= 5  ? 12 :
+                         10;
+
+    L.circleMarker([coords.lat, coords.lon], {
+    radius: 25,
+    fillColor: color,
+    color: '#ffffff',
+    weight: 4,
+    fillOpacity: 1
+})
+.addTo(depotLayerB)
+.bindPopup(depot);
+    L.marker([coords.lat, coords.lon], {
+        icon: L.divIcon({
+            className: 'depot-label',
+            html: depot,
+            iconSize: [0,0],
+            iconAnchor: [0,-14]
+        }),
+        interactive: false
+    }).addTo(depotLabelLayerB);
+
+});
 
     // Individual rake markers — positioned at Current Station, fallback to Depot
     rows.forEach(r => {
@@ -432,7 +394,7 @@ function switchTab(id) {
       const currentStn = (r['Current Station']  || '').trim().toUpperCase();
 
       const stnOrg      = shared_getOrgByCode(currentStn);
-      const fallbackOrg = shared_getOrgByCode(depotKey);
+      const fallbackOrg = depotCoordLookup[depotKey];
       const resolvedOrg = stnOrg || fallbackOrg;
       if (!resolvedOrg) return;
 
@@ -453,9 +415,13 @@ function switchTab(id) {
       const arrivalLabel= arrivalDate ? formatDateTime(arrivalDate) : (r['Expected Arrival'] || '—');
 
       L.circleMarker([coords.lat + jLat, coords.lon + jLon], {
-        radius: 9, fillColor: '#00E5FF',
-        color: '#04121b', weight: 1.2, fillOpacity: 0.98, opacity: 1
-      }).addTo(wagonLayerB).bindPopup(`
+  radius: 6,
+  fillColor: '#009dff',
+  color: '#ffffff',
+  weight: 1,
+  fillOpacity: 1,
+  opacity: 1
+}).addTo(wagonLayerB).bindPopup(`
         <strong>Rake: ${r['Rake ID'] || ''}</strong><br/>
         Wagons: ${r['Number of Wagons'] || ''}<br/>
         Current: ${r['Current Station'] || ''}<br/>
@@ -468,7 +434,10 @@ function switchTab(id) {
     });
 
     if (bounds.length > 0) {
-      try { mapB.fitBounds(bounds, { maxZoom: 7, padding: [40, 40] }); } catch (e) {}
+      try { mapB.fitBounds(bounds, {
+    maxZoom: 9,
+    padding:[80,80]
+}); } catch (e) {}
     }
   }
 
@@ -487,6 +456,14 @@ function switchTab(id) {
         div.style.display = div.textContent.toLowerCase().includes(q) ? 'flex' : 'none';
       });
     });
+    document
+.getElementById('distance-filter')
+.addEventListener('change', booked_update);
+
+document
+.getElementById('days-filter')
+.addEventListener('change', booked_update);
+
     initBookedMap();
     booked_update();
   };
@@ -517,10 +494,38 @@ async function initDashboardCorePipeline() {
 
     // CHANGED: index by stn_code only (new CSV has no org_slno/org_code)
     globalOrgsData.forEach(item => {
-      if (item.stn_code) globalOrgLookup[item.stn_code.trim().toUpperCase()] = item;
-    });
+    if (item.stn_code) {
+        globalOrgLookup[item.stn_code.trim().toUpperCase()] = item;
+    }
+});
 
-    if (window.initLiveHeatmapModule)    window.initLiveHeatmapModule();
+depotCoordLookup = {};
+
+globalWagonsData.forEach(r => {
+
+    const depot =
+        (r['ROH Depot'] || '').trim().toUpperCase();
+
+    const currentStation =
+        (r['Current Station'] || '').trim().toUpperCase();
+
+    if (
+        depot &&
+        currentStation &&
+        !depotCoordLookup[depot] &&
+        globalOrgLookup[currentStation]
+    ) {
+        depotCoordLookup[depot] =
+            globalOrgLookup[currentStation];
+    }
+
+});
+console.log(
+    "Depot mappings:",
+    Object.keys(depotCoordLookup).length
+);
+
+console.log(depotCoordLookup);
     if (window.initBookedTodepotModule)  window.initBookedTodepotModule();
 
   } catch (err) {

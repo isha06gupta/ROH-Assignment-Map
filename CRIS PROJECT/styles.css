@@ -136,46 +136,6 @@ section {
 }
 
 /* TABS */
-
-.tabs {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 24px;
-}
-
-.tab {
-    padding: 10px 18px;
-    border-radius: 8px;
-
-    border: 1px solid var(--border);
-    background: white;
-
-    color: var(--primary);
-    font-weight: 600;
-
-    cursor: pointer;
-    transition: 0.25s;
-}
-
-.tab:hover {
-    background: #edf6ff;
-}
-
-.tab.active {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
-}
-
-.tab-panel {
-    display: none;
-}
-
-.tab-panel.active {
-    display: block;
-}
-
 /* MAP */
 
 #map {
@@ -549,4 +509,22 @@ tr:hover td {
 .filter-select:focus {
     outline: none;
     border-color: var(--secondary);
+}
+.leaflet-control-layers {
+    background: white !important;
+    color: black !important;
+}
+
+.leaflet-control-layers label {
+    color: black !important;
+    font-weight: 600;
+}
+
+.depot-label {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow:
+        0 0 3px #000,
+        0 0 6px #000;
 }
